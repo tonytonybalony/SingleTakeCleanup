@@ -27,6 +27,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dryRunSwitch: SwitchMaterial
     private lateinit var resultTextView: TextView
 
+
     private val TRASH_FOLDER_NAME = "SingleTake_Trash"
 
     // --- The NEW, MODERN way to handle permissions ---
@@ -66,7 +67,10 @@ class MainActivity : AppCompatActivity() {
         cleanButton = findViewById(R.id.cleanButton)
         dryRunSwitch = findViewById(R.id.dryRunSwitch)
         resultTextView = findViewById(R.id.resultTextView)
-
+        val testMoveButton: Button = findViewById(R.id.testMoveButton)
+        testMoveButton.setOnClickListener {
+            moveSingleTestFileToTrash()
+        }
         cleanButton.setOnClickListener {
             checkPermissionAndProcessFiles()
         }
@@ -91,6 +95,34 @@ class MainActivity : AppCompatActivity() {
             } else {
                 // Request the old permission.
                 requestPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
+    }
+    private fun moveSingleTestFileToTrash() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cameraDir = File(Environment.getExternalStorageDirectory(), "DCIM/Camera")
+            val trashDir = File(cameraDir, TRASH_FOLDER_NAME)
+            if (!trashDir.exists()) trashDir.mkdirs()
+
+            // Pick the first matching file as a test
+            val testFile = cameraDir.listFiles()?.firstOrNull { file ->
+                file.name.matches(Regex("\\d{8}_\\d{6}_\\d{2}\\.(jpg|mp4|jpeg)")) &&
+                        !file.name.endsWith("_99.mp4")
+            }
+
+            val resultMsg = if (testFile != null) {
+                val destFile = File(trashDir, testFile.name)
+                if (testFile.renameTo(destFile)) {
+                    "Test: Moved ${testFile.name} to trash."
+                } else {
+                    "Test: Failed to move ${testFile.name}."
+                }
+            } else {
+                "Test: No matching file found."
+            }
+
+            withContext(Dispatchers.Main) {
+                resultTextView.text = resultMsg
             }
         }
     }
