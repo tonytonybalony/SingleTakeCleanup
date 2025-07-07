@@ -1,18 +1,22 @@
-package io.github.tonytonybalony.cleaner
+package io.github.tonytonybalony.cleaner // Make sure this matches your package name
+
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.Settings
 import android.util.Log
-import android.view.View
 import android.widget.Button
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.switchmaterial.SwitchMaterial
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -23,8 +27,37 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dryRunSwitch: SwitchMaterial
     private lateinit var resultTextView: TextView
 
-    private val PERMISSION_REQUEST_CODE = 101
-    private val TRASH_FOLDER_NAME = "SingleTake_Trash" // Our "Recycle Bin"
+    private val TRASH_FOLDER_NAME = "SingleTake_Trash"
+
+    // --- The NEW, MODERN way to handle permissions ---
+
+    // 1. Define the contract: what are we asking for?
+    // We are asking for a permission, and the result is a Boolean (true if granted).
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                // For Android 10, permission was granted.
+                processFiles()
+            } else {
+                // For Android 10, permission was denied.
+                resultTextView.text = "儲存權限被拒絕。"
+            }
+        }
+
+    // 2. Define the contract for the "All Files Access" settings page.
+    private val manageStorageLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            // This callback is triggered when we return from the settings page.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                if (Environment.isExternalStorageManager()) {
+                    // User has just granted the permission.
+                    processFiles()
+                } else {
+                    resultTextView.text = "「所有檔案存取」權限被拒絕。"
+                }
+            }
+        }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,24 +73,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkPermissionAndProcessFiles() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            // Permission is not granted, request it.
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), PERMISSION_REQUEST_CODE)
-        } else {
-            // Permission has already been granted, process files.
-            processFiles()
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST_CODE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission was granted.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // For Android 11, 12, 13, 14+
+            if (Environment.isExternalStorageManager()) {
+                // We have permission, GO!
                 processFiles()
             } else {
-                // Permission was denied.
-                resultTextView.text = "權限被拒絕，無法讀取相簿檔案。"
+                // We DON'T have permission, launch the system settings page for the user.
+                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                val uri = Uri.fromParts("package", packageName, null)
+                intent.data = uri
+                manageStorageLauncher.launch(intent) // Use the new launcher
+            }
+        } else { // For Android 10 (Legacy)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+                // We have permission, GO!
+                processFiles()
+            } else {
+                // Request the old permission.
+                requestPermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
             }
         }
     }
@@ -66,17 +99,14 @@ class MainActivity : AppCompatActivity() {
         val isDryRun = dryRunSwitch.isChecked
         val buttonText = if(isDryRun) "正在模擬掃描..." else "正在移動檔案..."
 
-        // Disable button and show progress on main thread
         cleanButton.isEnabled = false
         cleanButton.text = buttonText
         resultTextView.text = "掃描中，請稍候..."
 
-        // Use Coroutines to run heavy I/O operations on a background thread
-        GlobalScope.launch(Dispatchers.IO) {
-            val cameraDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM).resolve("Camera")
+        lifecycleScope.launch(Dispatchers.IO) {
+            val cameraDir = File(Environment.getExternalStorageDirectory(), "DCIM/Camera")
             val trashDir = File(cameraDir, TRASH_FOLDER_NAME)
 
-            // Create the trash directory if it doesn't exist
             if (!trashDir.exists()) {
                 trashDir.mkdirs()
             }
@@ -88,9 +118,12 @@ class MainActivity : AppCompatActivity() {
 
             if (cameraDir.exists() && cameraDir.isDirectory) {
                 cameraDir.listFiles()?.forEach { file ->
-                    // Rule 1: Match the Single Take generated file pattern (e.g., IMG_..._01.jpg)
-                    val isSingleTakeGenerated = file.name.matches(Regex("IMG_.*_\\d{2}\\.(jpg|mp4|jpeg)"))
-                    // Rule 2: Exclude the original video file you want to keep
+                    // ==========================================================
+                    // === THIS IS THE ONLY LINE THAT HAS CHANGED ===
+                    // New, More Accurate Rule:
+                    val isSingleTakeGenerated = file.name.matches(Regex("\\d{8}_\\d{6}_\\d{2}\\.(jpg|mp4|jpeg)"))
+                    // ==========================================================
+
                     val isNotTheOriginalVideo = !file.name.endsWith("_99.mp4")
 
                     if (isSingleTakeGenerated && isNotTheOriginalVideo) {
@@ -99,24 +132,19 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (isDryRun) {
-                    // --- SIMULATION MODE ---
                     logBuilder.append("【模擬模式】找到 ${filesToProcess.size} 個可移動的檔案：\n\n")
                     if (filesToProcess.isEmpty()) {
                         logBuilder.append("沒有找到符合條件的檔案。")
                     } else {
-                        filesToProcess.forEach { file ->
-                            logBuilder.append(file.name).append("\n")
-                        }
+                        filesToProcess.forEach { file -> logBuilder.append(file.name).append("\n") }
                     }
                 } else {
-                    // --- REAL MOVE MODE ---
                     logBuilder.append("【移動模式】開始移動 ${filesToProcess.size} 個檔案到回收站...\n\n")
                     filesToProcess.forEach { file ->
                         val destFile = File(trashDir, file.name)
                         try {
                             if (file.renameTo(destFile)) {
                                 movedCount++
-                                Log.d("FileMover", "Moved: ${file.name}")
                             } else {
                                 failedCount++
                                 Log.e("FileMover", "Failed to move: ${file.name}")
@@ -135,7 +163,6 @@ class MainActivity : AppCompatActivity() {
                 logBuilder.append("錯誤：找不到 DCIM/Camera 資料夾。")
             }
 
-            // Switch back to the Main thread to update the UI
             withContext(Dispatchers.Main) {
                 resultTextView.text = logBuilder.toString()
                 cleanButton.isEnabled = true
