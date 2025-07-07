@@ -1,0 +1,56 @@
+# SingleTake Cleaner
+
+## Description
+
+A simple Android app to help you clean up Samsung Single Take photos and videos from your device. It moves matching files from your DCIM/Camera folder to a trash subfolder, making it easy to manage and declutter your gallery.
+
+
+## Features
+
+- Scan for Single Take-generated photos and videos.
+- Move all matching files to a trash folder (DCIM/Camera/SingleTake_Trash).
+- **Simulation (dry run) mode** to preview which files will be moved.
+- Test button to move a single file to trash for verification.
+- Modern Android permissions handling.
+
+# Installation Instructions
+
+## Prerequisites
+
+- Android Studio (Arctic Fox or newer recommended)
+- Android SDK (API 29+)
+- Gradle
+
+## Usage
+
+1. Install v4.0 from releases.
+2. Launch the app.
+3. Grant the required storage permissions when prompted.
+4. Use the Simulation Mode switch to preview or actually move files.
+5. Tap Start Scan to process all matching files.
+6. Use the Test Move One File button to move a single file to trash for testing.
+
+## Configuration
+
+- No API keys or external configuration needed.
+- The app works directly with your device’s DCIM/Camera folder.
+
+## Motivation
+
+  This project was built for my dad, who has a Samsung Galaxy S21 Ultra and loves taking photos with it. He records every special moment in life to cherish them and to help him remember everything in the future. Little did he know, the "Single Take" recording mode automatically generates several images and videos from each original video, adding new background music and transitions. He soon ran out of storage due to the huge number of similar videos and images. When he realized what had happened, he was worried about the complexity of deleting them one by one. As a CSIE student, I decided to solve this problem for him!
+
+## Acknowledgements
+
+- Built with Android, Kotlin, Gemini, Copilot Pro, and Jetpack libraries.
+- Thanks to open-source contributors and the Android developer community.
+
+
+
+
+
+
+
+
+
+
+
